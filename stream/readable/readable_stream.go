@@ -2,10 +2,9 @@ package readable
 
 import (
 	"container/list"
-	"stream/emitter"
-	"stream/generators"
-	"stream/types"
-	"stream/writable"
+	"github.com/jpg013/go_stream/emitter"
+	"github.com/jpg013/go_stream/generators"
+	"github.com/jpg013/go_stream/types"
 	"sync"
 )
 
@@ -88,11 +87,13 @@ func onEndOfChunk(rs *Stream) {
 }
 
 type Stream struct {
-	emitter *emitter.Emitter
-	state   *ReadableState
-	dest    writable.Writable
-	mux     sync.Mutex
-	gen     generators.Type
+	emitter  *emitter.Type
+	state    *ReadableState
+	dest     types.Writable
+	mux      sync.Mutex
+	gen      generators.Type
+	doneChan chan struct{}
+	Type     types.StreamType
 }
 
 func canReadMore(rs *Stream) bool {
@@ -152,7 +153,7 @@ func (rs *Stream) Emit(topic string, data interface{}) {
 	rs.emitter.Emit(topic, data)
 }
 
-func (rs *Stream) Pipe(w writable.Writable) writable.Writable {
+func (rs *Stream) Pipe(w types.Writable) types.Writable {
 	if rs.state.ended {
 		panic("cannot Pipe() to ended readable")
 	}
@@ -196,14 +197,7 @@ func (rs *Stream) Pipe(w writable.Writable) writable.Writable {
 		// Write a nil chunk to the destination to signal end
 		rs.dest.Write(nil)
 		rs.state.destroyed = true
-	})
-
-	rs.On("destroy", func(evt types.Event) {
-		// Handle destroy
-		if rs.state.destroyed {
-			panic("cannot destroy stream, already destroyed")
-		}
-		rs.state.destroyed = true
+		close(rs.doneChan)
 	})
 
 	w.On("drain", func(evt types.Event) {
@@ -216,11 +210,17 @@ func (rs *Stream) Pipe(w writable.Writable) writable.Writable {
 	return w
 }
 
-func NewReadable(gen generators.Type) Readable {
+func (rs *Stream) Done() <-chan struct{} {
+	return rs.doneChan
+}
+
+func NewReadable(gen generators.Type) types.Readable {
 	r := &Stream{
-		emitter: emitter.NewEmitter(),
-		state:   NewReadableState(),
-		gen:     gen,
+		emitter:  emitter.NewEmitter(),
+		state:    NewReadableState(),
+		gen:      gen,
+		doneChan: make(chan struct{}),
+		Type:     types.ReadableType,
 	}
 
 	return r

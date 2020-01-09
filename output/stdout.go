@@ -1,8 +1,8 @@
 package output
 
 import (
+	"github.com/jpg013/go_stream/types"
 	"os"
-	"stream/types"
 )
 
 // STDOUTConfig contains configuration fields for the stdout based output type.
@@ -27,7 +27,6 @@ func (stdout *STDOUT) Write(chunk types.Chunk) error {
 	if stdout.writer.Closed() {
 		return types.ErrOutputClosed
 	}
-
 	stdout.inChan <- chunk
 	return nil
 }

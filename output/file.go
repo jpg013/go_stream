@@ -1,8 +1,8 @@
 package output
 
 import (
+	"github.com/jpg013/go_stream/types"
 	"os"
-	"stream/types"
 )
 
 // FileConfig contains configuration fields for the file based output type.
@@ -45,7 +45,7 @@ func NewFile(conf Config) (Type, error) {
 		return nil, err
 	}
 
-	writer := NewLineWriter(file, false, []byte(conf.STDOUT.Delim))
+	writer := NewLineWriter(file, false, []byte(conf.File.Delim))
 	inChan := make(chan types.Chunk)
 
 	// start consuming messages
@@ -57,5 +57,3 @@ func NewFile(conf Config) (Type, error) {
 		inChan: inChan,
 	}, nil
 }
-
-//------------------------------------------------------------------------------

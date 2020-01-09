@@ -2,7 +2,7 @@ package writable
 
 import (
 	"container/list"
-	"stream/types"
+	"github.com/jpg013/go_stream/types"
 )
 
 func fromBuffer(buf *list.List) types.Chunk {

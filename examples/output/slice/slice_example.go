@@ -1,8 +1,9 @@
 package main
 
 import (
-	"stream/readable"
-	"stream/writable"
+	"github.com/jpg013/go_stream/output"
+	"github.com/jpg013/go_stream/stream/readable"
+	"github.com/jpg013/go_stream/stream/writable"
 )
 
 var data = []string{
@@ -14,17 +15,20 @@ var data = []string{
 }
 
 func main() {
-	r, err := readable.FromSlice(data)
+	rs, err := readable.FromSlice(data)
 
 	if err != nil {
 		panic(err.Error())
 	}
 
-	w, err := writable.ToSTDOUT()
+	ws, err := writable.ToSTDOUT(output.NewConfig())
 
 	if err != nil {
 		panic(err.Error())
 	}
 
-	r.Pipe(w)
+	rs.Pipe(ws)
+
+	// wait for writeble stream to finish
+	<-ws.Done()
 }

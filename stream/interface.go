@@ -1,6 +1,6 @@
 package stream
 
-// import "stream/events"
+// import "github.com/jpg013/go_stream/events"
 
 // type Stream interface {
 // 	Pipe(Stream) Stream

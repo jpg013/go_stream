@@ -1,7 +1,7 @@
 package generators
 
 import (
-	"stream/types"
+	"github.com/jpg013/go_stream/types"
 )
 
 // SliceGenerator is an generator that takes in a slice and

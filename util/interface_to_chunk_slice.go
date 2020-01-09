@@ -2,8 +2,8 @@ package util
 
 import (
 	"errors"
+	"github.com/jpg013/go_stream/types"
 	"reflect"
-	"stream/types"
 )
 
 // InterfaceToChunkSlice tries to convert an empty interface{} to a

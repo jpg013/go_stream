@@ -1,12 +1,12 @@
 package emitter
 
-import "stream/types"
+import "github.com/jpg013/go_stream/types"
 
 // Emit will push data to a specified topic
-func (eb *Emitter) Emit(topic string, data interface{}) {
-	eb.rw.RLock()
+func (e *Type) Emit(topic string, data interface{}) {
+	e.rw.RLock()
 
-	if fns, ok := eb.handlers[topic]; ok {
+	if fns, ok := e.handlers[topic]; ok {
 		// this is done because the slices refer to same array even though they are passed by value
 		// thus we are creating a new slice with our elements thus preserve locking correctly.
 		handlers := append(EventHandlerSlice{}, fns...)
@@ -16,5 +16,5 @@ func (eb *Emitter) Emit(topic string, data interface{}) {
 			}
 		}(types.Event{Topic: topic, Data: data}, handlers)
 	}
-	eb.rw.RUnlock()
+	e.rw.RUnlock()
 }

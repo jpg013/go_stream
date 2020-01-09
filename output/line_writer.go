@@ -2,8 +2,8 @@ package output
 
 import (
 	"fmt"
+	"github.com/jpg013/go_stream/types"
 	"io"
-	"stream/types"
 	"sync/atomic"
 )
 

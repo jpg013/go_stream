@@ -1,16 +1,16 @@
 package emitter
 
-import "stream/types"
+import "github.com/jpg013/go_stream/types"
 
 // On subscribes an event channel to a particular topic
-func (eb *Emitter) On(topic string, fn types.EventHandler) {
-	eb.rw.Lock()
+func (e *Type) On(topic string, fn types.EventHandler) {
+	e.rw.Lock()
 
-	if prev, ok := eb.handlers[topic]; ok {
-		eb.handlers[topic] = append(prev, fn)
+	if prev, ok := e.handlers[topic]; ok {
+		e.handlers[topic] = append(prev, fn)
 	} else {
-		eb.handlers[topic] = []types.EventHandler{fn}
+		e.handlers[topic] = []types.EventHandler{fn}
 	}
 
-	eb.rw.Unlock()
+	e.rw.Unlock()
 }
