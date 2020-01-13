@@ -10,7 +10,7 @@ import (
 func BenchmarkReadable(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		ws, _ := writable.NewNullWritable()
-		gen, _ := generators.NewNumberGenerator(2)
+		gen, _ := generators.NewNumberGenerator(1000)
 		rs, _ := NewReadable(gen)
 
 		rs.Pipe(ws)

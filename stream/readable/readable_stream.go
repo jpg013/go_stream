@@ -15,7 +15,14 @@ func maybeReadMore(rs *Stream) {
 		return
 	}
 
-	if isReadableFlowing(rs) {
+	// If we are ended, and there is no more data to be written to
+	// output, then exit.
+	if state.ended && state.buffer.Len() == 0 {
+		return
+	}
+
+	// We keep reading while we are flowing or until buffer is full
+	if isReadableFlowing(rs) || state.buffer.Len() < state.highWaterMark {
 		go rs.Read()
 	}
 }
@@ -84,6 +91,7 @@ func onEndOfChunk(rs *Stream) {
 		panic("stream is already ended")
 	}
 	rs.state.ended = true
+	checkEndOfStream(rs)
 }
 
 type Stream struct {
@@ -102,6 +110,14 @@ func canReadMore(rs *Stream) bool {
 	return !state.destroyed &&
 		isReadableFlowing(rs) &&
 		state.buffer.Len() < state.highWaterMark
+}
+
+func checkEndOfStream(rs *Stream) {
+	state := rs.state
+	// Check to see if the readable stream has ended.
+	if state.ended && state.buffer.Len() == 0 && !state.readRequested {
+		rs.Emit("end", nil)
+	}
 }
 
 func emitReadable(rs *Stream, data types.Chunk) {
@@ -183,24 +199,21 @@ func (rs *Stream) Pipe(w types.Writable) types.Writable {
 			pauseReadable(rs)
 		}
 
-		// unset the read requested flag and attempt to read more data
+		// unset the read requested flag after write
 		if rs.state.readRequested {
 			rs.state.readRequested = false
 		}
 
-		// Check to see if the readable stream has ended
-		if rs.state.ended && rs.state.buffer.Len() == 0 {
-			rs.Emit("end", nil)
-		} else {
-			// Trying reading more if we can
-			maybeReadMore(rs)
-		}
+		// Check the end of the stream, if we are ended
+		// and there is not more data to emit we can emit the
+		// "end" event
+		checkEndOfStream(rs)
+
+		// Trying reading more if we can
+		maybeReadMore(rs)
 	})
 
 	rs.On("end", func(evt types.Event) {
-		state.mux.Lock()
-		defer state.mux.Unlock()
-
 		if rs.state.destroyed {
 			panic("we have already been here")
 		}
