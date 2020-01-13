@@ -16,7 +16,7 @@ func (n *Null) Close() {
 	// Pass
 }
 
-// NewNull creates a Null output type.
-func NewNull() (Type, error) {
+// NewNullOutput returns a Null output type.
+func NewNullOutput() (Type, error) {
 	return &Null{}, nil
 }
