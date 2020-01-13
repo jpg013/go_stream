@@ -85,7 +85,21 @@ func writeNext(ws *Stream) {
 }
 
 func writableEndOfChunk(ws *Stream) {
+	if ws.state.ended {
+		panic("stream already ended")
+	}
+
 	ws.state.ended = true
+	checkEndOfStream(ws)
+}
+
+func checkEndOfStream(ws *Stream) {
+	state := ws.state
+
+	// Check to see if the readable stream has ended.
+	if state.ended && state.buffer.Len() == 0 && !state.writeRequested {
+		ws.Emit("end", nil)
+	}
 }
 
 func (w *Stream) Write(data types.Chunk) bool {
@@ -127,6 +141,10 @@ func NewWritable(out output.Type) (types.Writable, error) {
 			panic("cannot end writable stream, already destroyed")
 		}
 
+		if !state.ended {
+			panic("\"end\" event emitted before end of stream")
+		}
+
 		out.Close()
 		state.destroyed = true
 
@@ -150,19 +168,20 @@ func NewWritable(out output.Type) (types.Writable, error) {
 		// Call output.Write with data
 		err := out.Write(evt.Data)
 
+		// unset the write next
+		state.writeRequested = false
+
 		if err != nil {
 			panic(err.Error())
 		}
 
-		if state.ended && state.buffer.Len() == 0 {
-			ws.emitter.Emit("end", nil)
-		} else if state.buffer.Len() == 0 && state.draining && !state.ended {
+		checkEndOfStream(ws)
+
+		// Emit drain event if needed
+		if state.buffer.Len() == 0 && state.draining && !state.ended {
 			ws.emitter.Emit("drain", nil)
 			state.draining = false
 		}
-
-		// unset the write next
-		state.writeRequested = false
 
 		go writeNext(ws)
 	})
