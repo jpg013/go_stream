@@ -11,7 +11,7 @@ type ReadableState struct {
 	ended         bool
 	destroyed     bool
 	readRequested bool
-	mtx           sync.Mutex
+	mux           sync.Mutex
 }
 
 func NewReadableState() *ReadableState {

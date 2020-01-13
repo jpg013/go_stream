@@ -1,76 +1,76 @@
 package transform
 
-import (
-	"github.com/jpg013/go_stream/operators"
-	"github.com/jpg013/go_stream/types"
-)
+// import (
+// 	"github.com/jpg013/go_stream/operators"
+// 	"github.com/jpg013/go_stream/types"
+// )
 
-func (ts *Stream) Pipe(w types.Writable) types.Writable {
-	return nil
-}
+// func (ts *Stream) Pipe(w types.Writable) types.Writable {
+// 	return nil
+// }
 
-func (ts *Stream) Read() bool {
-	return false
-}
+// func (ts *Stream) Read() bool {
+// 	return false
+// }
 
-// On function
-func (ts *Stream) On(topic string, fn types.EventHandler) {
-	ts.emitter.On(topic, fn)
-}
+// // On function
+// func (ts *Stream) On(topic string, fn types.EventHandler) {
+// 	ts.emitter.On(topic, fn)
+// }
 
-// Emit function
-func (ts *Stream) Emit(topic string, data interface{}) {
-	ts.emitter.Emit(topic, data)
-}
+// // Emit function
+// func (ts *Stream) Emit(topic string, data interface{}) {
+// 	ts.emitter.Emit(topic, data)
+// }
 
-func (ts *Stream) Done() <-chan struct{} {
-	return ts.doneChan
-}
+// func (ts *Stream) Done() <-chan struct{} {
+// 	return ts.doneChan
+// }
 
-func (ts *Stream) Transform(chunk types.Chunk) bool {
-	return false
-}
+// func (ts *Stream) Transform(chunk types.Chunk) bool {
+// 	return false
+// }
 
-func (w *Stream) Write(data types.Chunk) bool {
-	state := w.state
-	state.mtx.Lock()
-	defer state.mtx.Unlock()
+// func (w *Stream) Write(data types.Chunk) bool {
+// 	state := w.state
+// 	state.mtx.Lock()
+// 	defer state.mtx.Unlock()
 
-	if state.destroyed {
-		panic("Error stream destroyed")
-	}
+// 	if state.destroyed {
+// 		panic("Error stream destroyed")
+// 	}
 
-	// // Similar to a readable stream, a nil chunk indicates end of stream.
-	// if data == nil {
-	// 	writableEndOfChunk(w)
-	// 	return false
-	// }
+// 	// // Similar to a readable stream, a nil chunk indicates end of stream.
+// 	// if data == nil {
+// 	// 	writableEndOfChunk(w)
+// 	// 	return false
+// 	// }
 
-	return writeOrBuffer(w, data)
-}
+// 	return writeOrBuffer(w, data)
+// }
 
-// If we're already writing something, then just put this
-// in the queue, and wait our turn. Otherwise, call doWrite
-// If we return false, then we need a drain event, so set that flag.
-func writeOrBuffer(w *Stream, chunk types.Chunk) bool {
-	state := w.state
+// // If we're already writing something, then just put this
+// // in the queue, and wait our turn. Otherwise, call doWrite
+// // If we return false, then we need a drain event, so set that flag.
+// func writeOrBuffer(w *Stream, chunk types.Chunk) bool {
+// 	state := w.state
 
-	// If there is not data buffered, and no write requested,
-	// then we can simply call emitWritable, and continue.
-	if !state.writeRequested && state.buffer.Len() == 0 {
-		emitWritable(w, chunk)
-	} else {
-		writableBufferChunk(w, chunk)
-	}
+// 	// If there is not data buffered, and no write requested,
+// 	// then we can simply call emitWritable, and continue.
+// 	if !state.writeRequested && state.buffer.Len() == 0 {
+// 		emitWritable(w, chunk)
+// 	} else {
+// 		writableBufferChunk(w, chunk)
+// 	}
 
-	return canWriteMore(state)
-}
+// 	return canWriteMore(state)
+// }
 
-func NewTransform(op operators.Type) (types.Transform, error) {
-	return &Stream{
-		state: NewTransformState(),
-	}, nil
-}
+// func NewTransform(op operators.Type) (types.Transform, error) {
+// 	return &Stream{
+// 		state: NewTransformState(),
+// 	}, nil
+// }
 
 // // Stream type
 // type Stream struct {

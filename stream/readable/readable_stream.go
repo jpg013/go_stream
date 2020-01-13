@@ -2,10 +2,10 @@ package readable
 
 import (
 	"container/list"
-	"github.com/jpg013/go_stream/emitter"
-	"github.com/jpg013/go_stream/generators"
-	"github.com/jpg013/go_stream/types"
 	"sync"
+
+	"github.com/jpg013/go_stream/emitter"
+	"github.com/jpg013/go_stream/types"
 )
 
 func maybeReadMore(rs *Stream) {
@@ -91,7 +91,7 @@ type Stream struct {
 	state    *ReadableState
 	dest     types.Writable
 	mux      sync.Mutex
-	gen      generators.Type
+	gen      types.Generator
 	doneChan chan struct{}
 	Type     types.StreamType
 }
@@ -120,12 +120,12 @@ func emitReadable(rs *Stream, data types.Chunk) {
 
 func (rs *Stream) Read() bool {
 	state := rs.state
-	state.mtx.Lock()
-	defer state.mtx.Unlock()
+	state.mux.Lock()
+	defer state.mux.Unlock()
 
-	// if stream is destroyed then there is not point.
+	// if stream is destroyed then there is not point, simply exit
 	if state.destroyed {
-		panic("stream is destroyed")
+		return false
 	}
 
 	// If we have data in the buffer and we are flowing and a read has not been requested
@@ -169,7 +169,12 @@ func (rs *Stream) Pipe(w types.Writable) types.Writable {
 	// Assign writable to source destination
 	rs.dest = w
 
+	state := rs.state
+
 	rs.On("data", func(evt types.Event) {
+		state.mux.Lock()
+		defer state.mux.Unlock()
+
 		if !isReadableFlowing(rs) {
 			panic("readable stream is not flowing")
 		}
@@ -179,7 +184,9 @@ func (rs *Stream) Pipe(w types.Writable) types.Writable {
 		}
 
 		// unset the read requested flag and attempt to read more data
-		rs.state.readRequested = false
+		if rs.state.readRequested {
+			rs.state.readRequested = false
+		}
 
 		// Check to see if the readable stream has ended
 		if rs.state.ended && rs.state.buffer.Len() == 0 {
@@ -191,9 +198,13 @@ func (rs *Stream) Pipe(w types.Writable) types.Writable {
 	})
 
 	rs.On("end", func(evt types.Event) {
+		state.mux.Lock()
+		defer state.mux.Unlock()
+
 		if rs.state.destroyed {
 			panic("we have already been here")
 		}
+
 		// Write a nil chunk to the destination to signal end
 		rs.dest.Write(nil)
 		rs.state.destroyed = true
@@ -214,7 +225,7 @@ func (rs *Stream) Done() <-chan struct{} {
 	return rs.doneChan
 }
 
-func NewReadable(gen generators.Type) types.Readable {
+func NewReadable(gen types.Generator) (types.Readable, error) {
 	r := &Stream{
 		emitter:  emitter.NewEmitter(),
 		state:    NewReadableState(),
@@ -223,5 +234,5 @@ func NewReadable(gen generators.Type) types.Readable {
 		Type:     types.ReadableType,
 	}
 
-	return r
+	return r, nil
 }

@@ -13,11 +13,11 @@ func FromSlice(data interface{}) (types.Readable, error) {
 		return nil, err
 	}
 
-	gen, err := generators.NewSlice(slice)
+	gen, err := generators.NewSliceGenerator(slice)
 
 	if err != nil {
 		return nil, err
 	}
 
-	return NewReadable(gen), nil
+	return NewReadable(gen)
 }

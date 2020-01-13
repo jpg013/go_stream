@@ -20,7 +20,7 @@ func (sg *SliceGenerator) Next() (types.Chunk, error) {
 	return chunk, nil
 }
 
-func NewSlice(slice []types.Chunk) (Type, error) {
+func NewSliceGenerator(slice []types.Chunk) (types.Generator, error) {
 	return &SliceGenerator{
 		slice: slice,
 		iter:  0,

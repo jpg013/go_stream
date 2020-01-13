@@ -12,5 +12,5 @@ func ToSTDOUT(conf output.Config) (types.Writable, error) {
 		return nil, err
 	}
 
-	return NewWritable(output), nil
+	return NewWritable(output)
 }

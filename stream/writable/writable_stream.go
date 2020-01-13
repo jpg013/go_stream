@@ -110,7 +110,7 @@ func (ws *Stream) Done() <-chan struct{} {
 	return ws.doneChan
 }
 
-func NewWritable(out output.Type) types.Writable {
+func NewWritable(out output.Type) (types.Writable, error) {
 	ws := &Stream{
 		state:    NewWritableState(),
 		emitter:  emitter.NewEmitter(),
@@ -167,5 +167,5 @@ func NewWritable(out output.Type) types.Writable {
 		go writeNext(ws)
 	})
 
-	return ws
+	return ws, nil
 }
