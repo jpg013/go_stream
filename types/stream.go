@@ -19,19 +19,26 @@ type Stream interface {
 	Done() <-chan struct{}
 }
 
+type Reader interface {
+	Read() Chunk
+}
+
+type Writer interface {
+	Write(Chunk) bool
+}
+
 type Readable interface {
 	Stream
-	Read() bool
+	Reader
 }
 
 type Writable interface {
 	Stream
-	Write(Chunk) bool
+	Writer
 }
 
 type Transform interface {
 	Stream
-	Read() bool
-	Write(Chunk) bool
-	Transform(Chunk) bool
+	Reader
+	Writer
 }

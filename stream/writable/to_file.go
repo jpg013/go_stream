@@ -12,5 +12,5 @@ func ToFile(conf output.Config) (types.Writable, error) {
 		return nil, err
 	}
 
-	return NewWritable(output)
+	return NewWritableStream(output)
 }

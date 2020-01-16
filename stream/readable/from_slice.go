@@ -19,5 +19,9 @@ func FromSlice(data interface{}) (types.Readable, error) {
 		return nil, err
 	}
 
-	return NewReadable(gen)
+	config := NewConfig(func(c *Config) {
+		c.generator = gen
+	})
+
+	return NewReadableStream(config)
 }

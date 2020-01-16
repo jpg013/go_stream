@@ -3,7 +3,7 @@ package emitter
 import "github.com/jpg013/go_stream/types"
 
 // On subscribes an event channel to a particular topic
-func (e *Type) On(topic string, fn types.EventHandler) {
+func (e *Emitter) On(topic string, fn types.EventHandler) {
 	e.rw.Lock()
 
 	if prev, ok := e.handlers[topic]; ok {

@@ -8,20 +8,10 @@ import (
 
 // Stream type
 type Stream struct {
-	emitter  *emitter.Type
+	emitter.Emitter
 	state    *WritableState
 	Type     types.StreamType
 	doneChan chan struct{}
-}
-
-// On function
-func (ws *Stream) On(topic string, fn types.EventHandler) {
-	ws.emitter.On(topic, fn)
-}
-
-// Emit function
-func (ws *Stream) Emit(topic string, data interface{}) {
-	ws.emitter.Emit(topic, data)
 }
 
 // Pipe function
@@ -36,8 +26,13 @@ func emitWritable(ws *Stream, data types.Chunk) {
 		panic("cannot call emit writable, write already requested")
 	}
 
-	ws.Emit("write", data)
+	if data == nil {
+		panic("Cannot emit nil data chunk")
+	}
+
+	// set writed requested to true and emit write event
 	state.writeRequested = true
+	ws.Emit("write", data)
 }
 
 func writableBufferChunk(w *Stream, data types.Chunk) {
@@ -62,7 +57,6 @@ func writeOrBuffer(w *Stream, chunk types.Chunk) bool {
 	} else {
 		writableBufferChunk(w, chunk)
 	}
-
 	return canWriteMore(state)
 }
 
@@ -70,10 +64,8 @@ func canWriteMore(state *WritableState) bool {
 	return state.buffer.Len() < state.highWaterMark
 }
 
-func writeNext(ws *Stream) {
+func maybeWriteMore(ws *Stream) {
 	state := ws.state
-	state.mtx.Lock()
-	defer state.mtx.Unlock()
 
 	if state.writeRequested || state.buffer.Len() == 0 || state.destroyed {
 		return
@@ -104,8 +96,8 @@ func checkEndOfStream(ws *Stream) {
 
 func (w *Stream) Write(data types.Chunk) bool {
 	state := w.state
-	state.mtx.Lock()
-	defer state.mtx.Unlock()
+	// state.mtx.Lock()
+	// defer state.mtx.Unlock()
 
 	if state.destroyed {
 		panic("Error stream destroyed")
@@ -124,13 +116,15 @@ func (ws *Stream) Done() <-chan struct{} {
 	return ws.doneChan
 }
 
-func NewWritable(out output.Type) (types.Writable, error) {
+func NewWritableStream(out output.Type) (types.Writable, error) {
 	ws := &Stream{
 		state:    NewWritableState(),
-		emitter:  emitter.NewEmitter(),
 		Type:     types.WritableType,
 		doneChan: make(chan struct{}),
 	}
+
+	// Init the event emitter
+	ws.Emitter.Init()
 
 	ws.On("end", func(evt types.Event) {
 		state := ws.state
@@ -179,11 +173,11 @@ func NewWritable(out output.Type) (types.Writable, error) {
 
 		// Emit drain event if needed
 		if state.buffer.Len() == 0 && state.draining && !state.ended {
-			ws.emitter.Emit("drain", nil)
+			ws.Emit("drain", nil)
 			state.draining = false
 		}
 
-		go writeNext(ws)
+		maybeWriteMore(ws)
 	})
 
 	return ws, nil

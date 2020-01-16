@@ -11,9 +11,9 @@ import (
 func BenchmarkWritable(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		out, _ := output.NewNullOutput()
-		ws, _ := NewWritable(out)
+		ws, _ := NewWritableStream(out)
 		gen, _ := generators.NewNumberGenerator(1000)
-		rs, _ := readable.NewReadable(gen)
+		rs, _ := readable.NewReadableStream(gen)
 
 		rs.Pipe(ws)
 

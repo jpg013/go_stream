@@ -1,26 +1,25 @@
 package readable
 
-import "sync"
-
 import "container/list"
 
 type ReadableState struct {
 	buffer        *list.List
-	mode          ReadableMode
+	mode          int32
 	highWaterMark int
+	pendingData   int32
 	ended         bool
 	destroyed     bool
-	readRequested bool
-	mux           sync.Mutex
+	reading       bool
 }
 
 func NewReadableState() *ReadableState {
 	return &ReadableState{
 		buffer:        list.New(),
 		mode:          ReadableNull,
-		destroyed:     false,
-		ended:         false,
+		pendingData:   0,
 		highWaterMark: 5,
-		readRequested: false,
+		destroyed:     false,
+		reading:       false,
+		ended:         false,
 	}
 }
