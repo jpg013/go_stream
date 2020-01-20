@@ -1,7 +1,6 @@
 package readable
 
 import (
-	"container/list"
 	"errors"
 	"sync/atomic"
 
@@ -22,31 +21,28 @@ import (
 // to pause data consumption until a writable "drain" event occurs.
 // 3) The writable stream processes data faster than the readable stream is able to produce. In this case
 // we set a "needReadable" flag in order to know to emit data as soon as we have some available.
-
 func maybeReadMore(rs *Stream) {
 	state := rs.state
 
 	// If existing read then don't try to read more.
-	if state.destroyed || state.reading {
+	if readableDestroyed(rs) || readableDone(rs) {
 		return
 	}
 
 	// We keep reading while we are flowing or until buffer is full
-	if readableFlowing(rs) || state.buffer.Len() < state.highWaterMark {
+	if readableFlowing(rs) || getLength(rs) < state.highWaterMark {
 		go rs.Read()
 	}
 }
 
 func readableFlowing(rs *Stream) bool {
-	return atomic.LoadInt32(&rs.state.mode) == ReadableFlowing
+	return atomic.LoadUint32(&rs.state.mode) == ReadableFlowing
 }
 
 // Manually shove something into the read() buffer.
 // This returns true if the highWaterMark has not yet been hit,
 // similar to how writable.Write() returns true if you should write some more.
 func readableAddChunk(rs *Stream, data types.Chunk) {
-	state := rs.state
-
 	if readableDestroyed(rs) {
 		panic("destroyed")
 	}
@@ -55,8 +51,6 @@ func readableAddChunk(rs *Stream, data types.Chunk) {
 		panic("push after EOF")
 	}
 
-	state.reading = false
-
 	// read chunk is nil, signals end of stream.
 	if data == nil {
 		onEndOfChunk(rs)
@@ -64,15 +58,22 @@ func readableAddChunk(rs *Stream, data types.Chunk) {
 		// If flowing and no data buffered then we can skip buffering
 		// altogether and just emit the data
 		if readableFlowing(rs) &&
-			state.buffer.Len() == 0 {
+			getLength(rs) == 0 &&
+			!awaitingDrain(rs) {
 			emitData(rs, data)
 		} else {
 			// Add data to the buffer for later
-			state.buffer.PushBack(data)
+			readableBufferChunk(rs, data)
 		}
 	}
-
 	maybeReadMore(rs)
+}
+
+func readableBufferChunk(rs *Stream, data types.Chunk) {
+	state := rs.state
+
+	state.buffer.PushBack(data)
+	atomic.AddInt32(&state.length, 1)
 }
 
 func pauseReadable(rs *Stream) {
@@ -87,16 +88,13 @@ func resumeReadable(rs *Stream) {
 	state := rs.state
 
 	// if state is destroyed then no point in continuing
-	if state.destroyed {
+	if readableDestroyed(rs) {
 		return
 	}
 
-	if !state.destroyed &&
-		!readableFlowing(rs) {
-		prev := atomic.SwapInt32(&state.mode, ReadableFlowing)
-
+	if !readableFlowing(rs) {
 		// If previous value was not already flowing.
-		if prev != ReadableFlowing {
+		if atomic.SwapUint32(&state.mode, ReadableFlowing) != ReadableFlowing {
 			flow(rs)
 		}
 	}
@@ -110,21 +108,11 @@ func onEndOfChunk(rs *Stream) {
 	rs.state.ended = true
 }
 
-func emitReadable(rs *Stream) {
-	state := rs.state
-
-	if !readableDestroyed(rs) && (state.buffer.Len() > 0 || readableEnded(rs)) {
-		rs.Emit("readable", nil)
-	}
-
-	flow(rs)
-}
-
 func flow(rs *Stream) {
 	go func() {
 		for readableFlowing(rs) {
 			if rs.Read() == nil {
-				break
+				return
 			}
 		}
 	}()
@@ -133,31 +121,53 @@ func flow(rs *Stream) {
 func emitData(rs *Stream, data types.Chunk) {
 	state := rs.state
 	// increment the counter and emit the data
-	atomic.AddInt32(&state.pendingData, 1)
+	atomic.AddInt32(&state.pendingReads, 1)
 	rs.Emit("data", data)
 }
 
 func endReadable(rs *Stream) {
 	state := rs.state
 
-	if atomic.LoadInt32(&state.pendingData) > 0 {
+	if hasPendingReads(rs) {
 		panic("cannot end stream while pending data")
 	}
 
 	state.ended = true
-	rs.Emit("end", nil)
+	go rs.Emit("end", nil)
 }
 
 func readableDestroyed(rs *Stream) bool {
-	rs.mux.RLock()
-	defer rs.mux.RUnlock()
 	return rs.state.destroyed == true
 }
 
 func readableEnded(rs *Stream) bool {
-	rs.mux.RLock()
-	defer rs.mux.RUnlock()
 	return rs.state.ended == true
+}
+
+func isReading(rs *Stream) bool {
+	return atomic.LoadUint32(&rs.state.reading) == 1
+}
+
+func hasPendingReads(rs *Stream) bool {
+	return atomic.LoadInt32(&rs.state.pendingReads) > 0
+}
+
+func awaitingDrain(rs *Stream) bool {
+	return atomic.LoadUint32(&rs.state.awaitDrainWriters) == 1
+}
+
+func readableDone(rs *Stream) bool {
+	if readableEnded(rs) &&
+		!isReading(rs) &&
+		getLength(rs) == 0 &&
+		!hasPendingReads(rs) {
+		return true
+	}
+	return false
+}
+
+func getLength(rs *Stream) int {
+	return int(atomic.LoadInt32(&rs.state.length))
 }
 
 // Read is the main method to call in order to either read some
@@ -171,60 +181,67 @@ func (rs *Stream) Read() types.Chunk {
 		return nil
 	}
 
-	bufLen := state.buffer.Len()
-
 	// If we've ended, and we're now clear, then exit.
-	if readableEnded(rs) && bufLen == 0 {
-		if atomic.LoadInt32(&state.pendingData) == 0 {
-			// All pending data has flushed to the writer
-			endReadable(rs)
-		} else {
-			emitReadable(rs)
-		}
+	if readableDone(rs) {
+		// All pending data has flushed to the writer
+		endReadable(rs)
 		return nil
 	}
+
+	bufLen := getLength(rs)
 
 	// Always try to read more if buffer is not full
 	doRead := bufLen == 0 || bufLen < state.highWaterMark
 
 	// However, if we are already ready, or ended or destroyed then don't read more.
-	if state.reading || readableEnded(rs) || readableDestroyed(rs) {
+	if isReading(rs) || readableEnded(rs) || readableDestroyed(rs) {
 		doRead = false
 	}
 
 	if doRead {
-		// Set the reading flag to true and read
-		state.reading = true
 		rs.read()
 	}
 
-	data := fromBuffer(state.buffer)
+	var data types.Chunk
 
-	if data != nil {
-		emitData(rs, data)
+	if !awaitingDrain(rs) {
+		data = fromBuffer(rs)
+
+		if data != nil {
+			emitData(rs, data)
+		}
 	}
 
 	return data
 }
 
-func fromBuffer(buf *list.List) types.Chunk {
-	if buf.Len() == 0 {
+func fromBuffer(rs *Stream) types.Chunk {
+	state := rs.state
+
+	if getLength(rs) == 0 {
 		return nil
 	}
 
-	val := buf.Front()
+	val := state.buffer.Front()
 
 	if val == nil {
-		return nil
+		return val
 	}
 
-	buf.Remove(val)
+	state.buffer.Remove(val)
+
+	if atomic.AddInt32(&state.length, -1) < 0 {
+		panic("cannot have negative length")
+	}
 
 	return val.Value
 }
 
 // Pipe method is the main way to start the readable flowing data.
 func (rs *Stream) Pipe(w types.Writable) types.Writable {
+	rs.mux.Lock()
+	defer rs.mux.Unlock()
+
 	if readableEnded(rs) {
 		panic("cannot call pipe on ended readable stream")
 	}
@@ -233,52 +250,46 @@ func (rs *Stream) Pipe(w types.Writable) types.Writable {
 		panic("cannot call pipe on destroyed readable stream")
 	}
 
-	// Lock while we check the destination
-	rs.mux.Lock()
 	if rs.dest != nil {
 		panic("cannot call pipe on readable stream, pipe has already been called")
 	}
 
 	// Assign writable to source destination
 	rs.dest = w
-	rs.mux.Unlock()
 
 	// Flag indicating whether the readable stream has been cleaned up
-	cleanedUp := false
-	// Flag indicating whether the onDrain event has been added. It would
-	// feel a lot more clean to add to do .Once("drain") whenever a drain
-	// event is needed but also more expensive and slower.
-	onDrain := false
+	// cleanedUp := false
 
 	rs.On("data", func(evt types.Event) {
 		ret := rs.dest.Write(evt.Data)
-
 		if !ret {
 			// it is possible to get in a permanent state of "paused", when the
 			// dest has unpiped from the source.
-			if !cleanedUp {
-				pauseReadable(rs)
-			}
+			pauseReadable(rs)
 
-			if !onDrain {
-				rs.dest.On("drain", func(evt types.Event) {
+			if atomic.CompareAndSwapUint32(&rs.state.awaitDrainWriters, 0, 1) {
+				rs.dest.Once("drain", func(evt types.Event) {
+					atomic.CompareAndSwapUint32(&rs.state.awaitDrainWriters, 1, 0)
 					resumeReadable(rs)
 				})
 			}
 		}
-		// After each data event, decrement the pendingData count by 1.
-		atomic.AddInt32(&rs.state.pendingData, -1)
+
+		// After each data event, decrement the pendingReads count by 1.
+		if atomic.AddInt32(&rs.state.pendingReads, -1) < 0 {
+			panic("Cannot have negative pending reads")
+		}
 	})
 
 	rs.Once("end", func(evt types.Event) {
+		rs.mux.Lock()
+
 		if readableDestroyed(rs) {
-			panic("stream already destroyed")
+			return
 		}
 
 		// Write a nil chunk to the destination to signal end
 		rs.dest.Write(nil)
-
-		rs.mux.Lock()
 		rs.state.destroyed = true
 		rs.mux.Unlock()
 
@@ -298,43 +309,57 @@ func (rs *Stream) Done() <-chan struct{} {
 	return rs.doneChan
 }
 
-func (rs *Stream) push(chunk types.Chunk) {
-	readableAddChunk(rs, chunk)
-}
-
 // NewReadableStream returns a new readable stream instance
 func NewReadableStream(conf *Config) (types.Readable, error) {
-	if conf.generator == nil {
-		return nil, errors.New("cannot create readable stream with nil generator")
+	if conf.Generator == nil {
+		return nil, errors.New("readable stram requires data source")
 	}
 
 	state := NewReadableState()
-	gen := conf.generator
+	gen := conf.Generator
 	rs := &Stream{
 		state:      state,
 		doneChan:   make(chan struct{}),
 		StreamType: types.ReadableType,
 	}
 
-	// Call init of the event emitter
-	rs.Emitter.Init()
-
 	// Internal read function
 	rs.read = func() {
-		if !state.reading {
-			panic("cannot read from data source, reading flag not set")
+		if !atomic.CompareAndSwapUint32(&state.reading, 0, 1) {
+			return
 		}
 
-		// Get the next chunk
-		chunk, err := gen.Next()
+		for howMuchToRead(rs) > 0 {
+			// Get the next chunk
+			chunk, err := gen.Next()
 
-		if err != nil {
-			panic(err.Error())
+			if err != nil {
+				panic(err.Error())
+			}
+
+			// add the chunk and "unset" the reading flag
+			readableAddChunk(rs, chunk)
+
+			// break loop on nil chunk
+			if chunk == nil {
+				break
+			}
 		}
 
-		// add the chunk and "unset" the reading flag
-		rs.push(chunk)
+		if !atomic.CompareAndSwapUint32(&state.reading, 1, 0) {
+			panic("Could not unset reading flag")
+		}
 	}
 
 	return rs, nil
+}
+
+func howMuchToRead(rs *Stream) int {
+	state := rs.state
+
+	if getLength(rs) < state.highWaterMark && !state.ended {
+		return 1
+	}
+
+	return 0
 }

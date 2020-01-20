@@ -1,8 +1,11 @@
 package writable
 
+import "github.com/jpg013/go_stream/output"
+
 // Config represents a writable config
 type Config struct {
-	highWaterMark int
+	HighWaterMark int
+	Out           output.Type
 }
 
 // OptionFunc applies defaults to a writable config

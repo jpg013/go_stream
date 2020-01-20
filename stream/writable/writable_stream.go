@@ -1,103 +1,94 @@
 package writable
 
 import (
-	"github.com/jpg013/go_stream/emitter"
-	"github.com/jpg013/go_stream/output"
+	"errors"
+	"sync/atomic"
+
 	"github.com/jpg013/go_stream/types"
 )
-
-// Stream type
-type Stream struct {
-	emitter.Emitter
-	state    *WritableState
-	Type     types.StreamType
-	doneChan chan struct{}
-}
 
 // Pipe function
 func (ws *Stream) Pipe(w types.Writable) types.Writable {
 	panic("cannot call pipe on writable stream")
 }
 
-func emitWritable(ws *Stream, data types.Chunk) {
+func writableBufferChunk(ws *Stream, data types.Chunk) {
+	ws.mux.Lock()
 	state := ws.state
 
-	if state.writeRequested {
-		panic("cannot call emit writable, write already requested")
-	}
-
-	if data == nil {
-		panic("Cannot emit nil data chunk")
-	}
-
-	// set writed requested to true and emit write event
-	state.writeRequested = true
-	ws.Emit("write", data)
-}
-
-func writableBufferChunk(w *Stream, data types.Chunk) {
-	state := w.state
 	state.buffer.PushBack(data)
+	atomic.AddInt32(&state.length, 1)
 
-	if state.buffer.Len() >= state.highWaterMark && !state.draining {
+	if getLength(ws) >= state.highWaterMark && !state.draining {
 		state.draining = true
 	}
+	ws.mux.Unlock()
+}
+
+func requestWrite(ws *Stream) bool {
+	state := ws.state
+	ws.mux.Lock()
+	defer ws.mux.Unlock()
+
+	if state.writing {
+		return false
+	}
+
+	state.writing = true
+	return state.writing
+}
+
+func emitWrite(ws *Stream, chunk types.Chunk) {
+
 }
 
 // If we're already writing something, then just put this
 // in the queue, and wait our turn. Otherwise, call doWrite
 // If we return false, then we need a drain event, so set that flag.
-func writeOrBuffer(w *Stream, chunk types.Chunk) bool {
-	state := w.state
-
+func writeOrBuffer(ws *Stream, chunk types.Chunk) {
 	// If there is not data buffered, and no write requested,
 	// then we can simply call emitWritable, and continue.
-	if !state.writeRequested && state.buffer.Len() == 0 {
-		emitWritable(w, chunk)
+	if requestWrite(ws) {
+		go ws.Emit("write", chunk)
 	} else {
-		writableBufferChunk(w, chunk)
+		writableBufferChunk(ws, chunk)
 	}
-	return canWriteMore(state)
 }
 
-func canWriteMore(state *WritableState) bool {
-	return state.buffer.Len() < state.highWaterMark
+func getLength(ws *Stream) int {
+	return int(atomic.LoadInt32(&ws.state.length))
+}
+
+func canWriteMore(ws *Stream) bool {
+	return !writableEnded(ws) && getLength(ws) < ws.state.highWaterMark
 }
 
 func maybeWriteMore(ws *Stream) {
-	state := ws.state
-
-	if state.writeRequested || state.buffer.Len() == 0 || state.destroyed {
+	// Any data in the buffer?
+	if getLength(ws) == 0 {
 		return
 	}
 
-	chunk := fromBuffer(ws.state.buffer)
+	if requestWrite(ws) {
+		chunk := fromBuffer(ws)
 
-	emitWritable(ws, chunk)
+		if chunk != nil {
+			go ws.Emit("write", chunk)
+		}
+	}
 }
 
-func writableEndOfChunk(ws *Stream) {
+func onEndOfChunk(ws *Stream) {
 	if ws.state.ended {
-		panic("stream already ended")
+		panic("Cannot call onEndOfChunk, already ended!")
 	}
-
+	ws.mux.Lock()
 	ws.state.ended = true
-	checkEndOfStream(ws)
+	ws.mux.Unlock()
 }
 
-func checkEndOfStream(ws *Stream) {
+func (ws *Stream) Write(data types.Chunk) bool {
 	state := ws.state
-
-	// Check to see if the readable stream has ended.
-	if state.ended && state.buffer.Len() == 0 && !state.writeRequested {
-		ws.Emit("end", nil)
-	}
-}
-
-func (w *Stream) Write(data types.Chunk) bool {
-	state := w.state
-	// state.mtx.Lock()
-	// defer state.mtx.Unlock()
 
 	if state.destroyed {
 		panic("Error stream destroyed")
@@ -105,40 +96,44 @@ func (w *Stream) Write(data types.Chunk) bool {
 
 	// Similar to a readable stream, a nil chunk indicates end of stream.
 	if data == nil {
-		writableEndOfChunk(w)
+		onEndOfChunk(ws)
 		return false
 	}
 
-	return writeOrBuffer(w, data)
+	writeOrBuffer(ws, data)
+
+	return canWriteMore(ws)
 }
 
 func (ws *Stream) Done() <-chan struct{} {
 	return ws.doneChan
 }
 
-func NewWritableStream(out output.Type) (types.Writable, error) {
+func NewWritableStream(conf *Config) (types.Writable, error) {
 	ws := &Stream{
 		state:    NewWritableState(),
 		Type:     types.WritableType,
 		doneChan: make(chan struct{}),
 	}
 
-	// Init the event emitter
-	ws.Emitter.Init()
+	out := conf.Out
 
-	ws.On("end", func(evt types.Event) {
+	if out == nil {
+		return nil, errors.New("writable stream requires config with output type")
+	}
+
+	ws.Once("end", func(evt types.Event) {
 		state := ws.state
-		state.mtx.Lock()
-		defer state.mtx.Unlock()
 
-		if state.destroyed {
+		if writableDestroyed(ws) {
 			panic("cannot end writable stream, already destroyed")
 		}
 
-		if !state.ended {
+		if !writableEnded(ws) {
 			panic("\"end\" event emitted before end of stream")
 		}
 
+		ws.mux.Lock()
 		out.Close()
 		state.destroyed = true
 
@@ -146,39 +141,75 @@ func NewWritableStream(out output.Type) (types.Writable, error) {
 		if state.draining {
 			state.draining = false
 		}
-
+		ws.mux.Unlock()
 		close(ws.doneChan)
 	})
 
 	ws.On("write", func(evt types.Event) {
 		state := ws.state
-		state.mtx.Lock()
-		defer state.mtx.Unlock()
 
-		if !state.writeRequested {
-			panic("should not be in write event handler without write requested")
+		if !state.writing {
+			panic("What the fuck")
 		}
 
 		// Call output.Write with data
 		err := out.Write(evt.Data)
 
-		// unset the write next
-		state.writeRequested = false
-
 		if err != nil {
 			panic(err.Error())
 		}
 
-		checkEndOfStream(ws)
-
-		// Emit drain event if needed
-		if state.buffer.Len() == 0 && state.draining && !state.ended {
-			ws.Emit("drain", nil)
-			state.draining = false
-		}
-
-		maybeWriteMore(ws)
+		afterWrite(ws)
 	})
 
 	return ws, nil
+}
+
+func writableEnded(ws *Stream) bool {
+	return ws.state.ended == true
+}
+
+func writableDestroyed(ws *Stream) bool {
+	return ws.state.destroyed == true
+}
+
+func endWritable(rs *Stream) {
+	state := rs.state
+	rs.mux.Lock()
+
+	if state.writing {
+		panic("cannot end writable stream while writing")
+	}
+
+	if !state.ended {
+		panic("writable not ended")
+	}
+
+	state.ended = true
+	go rs.Emit("end", nil)
+	rs.mux.Unlock()
+}
+
+func afterWrite(ws *Stream) {
+	state := ws.state
+
+	ws.mux.Lock()
+	state.writing = false
+	ws.mux.Unlock()
+
+	// Emit drain event if needed
+	if getLength(ws) == 0 && state.draining && !writableEnded(ws) {
+		go ws.Emit("drain", nil)
+		state.draining = false
+	}
+
+	ws.mux.RLock()
+	shouldEnd := writableEnded(ws) && getLength(ws) == 0 && !state.writing
+	ws.mux.RUnlock()
+
+	if shouldEnd {
+		endWritable(ws)
+	}
+
+	go maybeWriteMore(ws)
 }

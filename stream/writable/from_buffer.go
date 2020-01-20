@@ -1,18 +1,29 @@
 package writable
 
 import (
-	"container/list"
+	"sync/atomic"
+
 	"github.com/jpg013/go_stream/types"
 )
 
-func fromBuffer(buf *list.List) types.Chunk {
-	val := buf.Front()
+func fromBuffer(ws *Stream) types.Chunk {
+	state := ws.state
+	ws.mux.Lock()
+	defer ws.mux.Unlock()
+
+	if getLength(ws) == 0 {
+		return nil
+	}
+
+	val := state.buffer.Front()
 
 	if val == nil {
 		return val
 	}
 
-	buf.Remove(val)
+	state.buffer.Remove(val)
+
+	atomic.AddInt32(&state.length, -1)
 
 	return val.Value
 }

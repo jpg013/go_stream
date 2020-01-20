@@ -4,8 +4,8 @@ import "github.com/jpg013/go_stream/types"
 
 // Config represents a readable config
 type Config struct {
-	highWaterMark int
-	generator     types.Generator
+	HighWaterMark int
+	Generator     types.Generator
 }
 
 // OptionFunc applies defaults to a readable config

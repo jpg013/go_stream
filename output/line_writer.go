@@ -72,7 +72,6 @@ func (w *LineWriter) loop() {
 		case <-w.closeChan:
 			return
 		}
-
 		_, err := fmt.Fprintf(w.handle, "%s%s", chunk, delim)
 
 		if err != nil {

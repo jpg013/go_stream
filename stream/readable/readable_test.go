@@ -1,20 +1,29 @@
 package readable
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/jpg013/go_stream/generators"
+	"github.com/jpg013/go_stream/stream/writable"
+	"github.com/jpg013/go_stream/types"
+)
 
 func BenchmarkReadable(b *testing.B) {
-	// numSlice := []int{1, 2, 3, 4, 5}
-	// rs, _ := FromSlice(numSlice)
-	// ws, _ := writable.NewNullWritable()
+	for i := 0; i < b.N; i++ {
+		ws, _ := writable.NewNullWritable()
+		rs, _ := newNumberReadable()
 
-	// for i := 0; i < b.N; i++ {
-	// 	ws, _ := writable.NewNullWritable()
-	// 	gen, _ := generators.NewNumberGenerator(1000)
-	// 	rs, _ := NewReadableStream(gen)
+		rs.Pipe(ws)
 
-	// 	rs.Pipe(ws)
+		// wait for writeble stream to finish
+		<-ws.Done()
+	}
+}
 
-	// 	// wait for writeble stream to finish
-	// 	<-ws.Done()
-	// }
+func newNumberReadable() (types.Readable, error) {
+	gen, _ := generators.NewNumberGenerator(2)
+	config := NewConfig(func(c *Config) {
+		c.generator = gen
+	})
+	return NewReadableStream(config)
 }

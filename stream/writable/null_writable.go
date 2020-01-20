@@ -1,22 +1,15 @@
 package writable
 
 import (
+	"github.com/jpg013/go_stream/emitter"
 	"github.com/jpg013/go_stream/types"
 )
 
 // NullStream type
 type NullStream struct {
+	emitter.Emitter
 	Type     types.StreamType
 	doneChan chan struct{}
-}
-
-// On function
-func (ws *NullStream) On(topic string, fn types.EventHandler) {
-}
-
-// Emit function
-func (ws *NullStream) Emit(topic string, data interface{}) {
-
 }
 
 // Pipe function

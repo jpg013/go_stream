@@ -1,16 +1,16 @@
 package writable
 
-import (
-	"github.com/jpg013/go_stream/output"
-	"github.com/jpg013/go_stream/types"
-)
+// import (
+// 	"github.com/jpg013/go_stream/output"
+// 	"github.com/jpg013/go_stream/types"
+// )
 
-func ToSTDOUT(conf output.Config) (types.Writable, error) {
-	output, err := output.NewSTDOUT(conf)
+// func ToSTDOUT(conf output.Config) (types.Writable, error) {
+// 	output, err := output.NewSTDOUT(conf)
 
-	if err != nil {
-		return nil, err
-	}
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	return NewWritableStream(output)
-}
+// 	return NewWritableStream(output)
+// }

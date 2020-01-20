@@ -8,11 +8,6 @@ const (
 	WritableType
 )
 
-type EventEmitter interface {
-	On(string, EventHandler)
-	Emit(string, interface{})
-}
-
 type Stream interface {
 	EventEmitter
 	Pipe(Writable) Writable

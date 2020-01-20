@@ -1,27 +1,29 @@
 package main
 
 import (
-	"fmt"
-	"time"
+	"sync"
 
 	"github.com/jpg013/go_stream/emitter"
 	"github.com/jpg013/go_stream/types"
 )
 
+func makeCallback() func(types.Event) {
+	mux := sync.Mutex{}
+	count := 0
+
+	return func(types.Event) {
+		mux.Lock()
+		count++
+		mux.Unlock()
+	}
+}
+
 func main() {
 	emitter := emitter.NewEmitter()
 
-	handler := func(evt types.Event) {
-		fmt.Println(evt.Data)
+	for i := 0; i < 10; i++ {
+		emitter.Once("balls", makeCallback())
+		emitter.Emit("balls", nil)
+		emitter.Emit("balls", nil)
 	}
-
-	emitter.On("test", handler)
-	emitter.On("test", func(evt types.Event) {
-		fmt.Println("in the other handler!!")
-	})
-	emitter.Emit("test", "justin")
-	time.Sleep(time.Second * 1)
-	emitter.Off("test", handler)
-	emitter.Emit("test", "justin")
-	time.Sleep(time.Second * 1)
 }

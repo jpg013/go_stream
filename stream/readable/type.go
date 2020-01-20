@@ -7,16 +7,16 @@ import (
 	"github.com/jpg013/go_stream/types"
 )
 
-type ReadableMode int32
+type ReadableMode uint32
 
 const (
 	// ReadableFlowing mode reads from the underlying system automatically
 	// and provides to an application as quickly as possible.
-	ReadableFlowing int32 = 1
+	ReadableFlowing uint32 = 1
 	// ReadableNotFlowing mode is paused and data must be explicity read from the stream
-	ReadableNotFlowing int32 = 2
+	ReadableNotFlowing uint32 = 2
 	// ReadableNull mode is null, there is no mechanism for consuming the stream's data
-	ReadableNull int32 = 0
+	ReadableNull uint32 = 0
 )
 
 // Stream represents a readable stream type
@@ -30,5 +30,6 @@ type Stream struct {
 	mux        sync.RWMutex
 	doneChan   chan struct{}
 	StreamType types.StreamType
-	read       func()
+	// internal read method that can be overwritten
+	read func()
 }
