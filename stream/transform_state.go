@@ -1,12 +1,11 @@
 package stream
 
-// type TransformState struct {
-// 	transforming  bool
-// 	writeChunk    types.Chunk
-// 	mux           sync.Mutex
-// 	needTransform bool
-// }
+type TransformState struct {
+	transforming uint32
+}
 
-// func NewTransformState() *TransformState {
-// 	return &TransformState{transforming: false}
-// }
+func NewTransformState() *TransformState {
+	return &TransformState{
+		transforming: 0,
+	}
+}

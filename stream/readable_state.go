@@ -1,8 +1,11 @@
-package readable
+package stream
 
 import "container/list"
 
+import "sync"
+
 type ReadableState struct {
+	mux               sync.RWMutex
 	buffer            *list.List
 	mode              uint32
 	pendingReads      int32
@@ -20,7 +23,7 @@ func NewReadableState() *ReadableState {
 		mode:              ReadableNull,
 		length:            0,
 		pendingReads:      0,
-		highWaterMark:     5,
+		highWaterMark:     16,
 		destroyed:         false,
 		reading:           0,
 		ended:             false,

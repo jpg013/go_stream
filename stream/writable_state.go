@@ -1,17 +1,19 @@
-package writable
+package stream
 
 import (
 	"container/list"
+	"sync"
 )
 
 type WritableState struct {
 	buffer        *list.List
 	highWaterMark int
 	length        int32
-	draining      bool
+	draining      uint32
 	ended         bool
 	destroyed     bool
-	writing       bool
+	writing       uint32
+	mux           sync.RWMutex
 }
 
 func NewWritableState() *WritableState {
@@ -19,8 +21,8 @@ func NewWritableState() *WritableState {
 		buffer:        list.New(),
 		length:        0,
 		highWaterMark: 3,
-		writing:       false,
-		draining:      false,
+		writing:       0,
+		draining:      0,
 		ended:         false,
 		destroyed:     false,
 	}

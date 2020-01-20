@@ -1,4 +1,4 @@
-package writable
+package stream
 
 import (
 	"sync/atomic"
@@ -6,12 +6,13 @@ import (
 	"github.com/jpg013/go_stream/types"
 )
 
-func fromBuffer(ws *Stream) types.Chunk {
-	state := ws.state
-	ws.mux.Lock()
-	defer ws.mux.Unlock()
+func fromReadableBuffer(state *ReadableState) types.Chunk {
+	state.mux.RLock()
+	defer state.mux.RUnlock()
 
-	if getLength(ws) == 0 {
+	len := atomic.LoadInt32(&state.length)
+
+	if len == 0 {
 		return nil
 	}
 

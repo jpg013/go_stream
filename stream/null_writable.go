@@ -1,4 +1,4 @@
-package writable
+package stream
 
 import (
 	"github.com/jpg013/go_stream/emitter"
@@ -8,12 +8,13 @@ import (
 // NullStream type
 type NullStream struct {
 	emitter.Emitter
-	Type     types.StreamType
+	Type     StreamType
+	state    *WritableState
 	doneChan chan struct{}
 }
 
 // Pipe function
-func (ws *NullStream) Pipe(w types.Writable) types.Writable {
+func (ws *NullStream) Pipe(w Writable) Writable {
 	panic("cannot call pipe on writable stream")
 }
 
@@ -32,10 +33,15 @@ func (ws *NullStream) Done() <-chan struct{} {
 	return ws.doneChan
 }
 
-func NewNullWritable() (types.Writable, error) {
-	ws := &NullStream{
+func (ws *NullStream) GetWriteState() *WritableState {
+	return ws.state
+}
+
+func NewNullWritable() (Writable, error) {
+	w := &NullStream{
 		doneChan: make(chan struct{}),
+		state:    &WritableState{},
 	}
 
-	return ws, nil
+	return w, nil
 }
