@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/jpg013/go_stream/generators"
 	"github.com/jpg013/go_stream/operators"
+	"github.com/jpg013/go_stream/output"
 	"github.com/jpg013/go_stream/stream"
 	"github.com/jpg013/go_stream/types"
 )
@@ -25,17 +26,26 @@ func withReadableSource() stream.OptionFunc {
 	}
 }
 
+func withSTDOUT() stream.OptionFunc {
+	return func(c *stream.Config) {
+		out, _ := output.NewSTDOUT(output.NewConfig())
+		c.Writable.Out = out
+	}
+}
+
 func main() {
 	conf := stream.NewConfig(
 		withTransformOperator(),
 		withReadableSource(),
+		withSTDOUT(),
 	)
 
-	rs, _ := stream.NewReadableStream(conf)
-	ts, _ := stream.NewTransformStream(conf)
+	r, _ := stream.NewReadableStream(conf)
+	t, _ := stream.NewTransformStream(conf)
+	w, _ := stream.NewWritableStream(conf)
 
-	rs.Pipe(ts) //.Pipe(ws)
+	r.Pipe(t).Pipe(w)
 
 	// Wait for stream to end
-	<-ts.Done()
+	<-w.Done()
 }

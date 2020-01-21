@@ -15,6 +15,7 @@ type ReadableState struct {
 	ended             bool
 	destroyed         bool
 	awaitDrainWriters uint32
+
 	// Destination for readable to write data,
 	// this is set when Pipe() is called
 	dest Writable

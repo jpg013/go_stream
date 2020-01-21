@@ -58,14 +58,14 @@ func readableAddChunk(r Readable, data types.Chunk) {
 	if data == nil {
 		readableEndOfChunk(r)
 	} else {
-		state := r.GetReadableState()
-		len := atomic.LoadInt32(&state.length)
+		rs := r.GetReadableState()
+		len := atomic.LoadInt32(&rs.length)
 
-		// If flowing and no data buffered then we can skip buffering
+		doRead := readableFlowing(r) && len == 0 && !awaitingDrain(r)
+
+		// If flowing and no da	ta buffered then we can skip buffering
 		// altogether and just emit the data
-		if readableFlowing(r) &&
-			len == 0 &&
-			!awaitingDrain(r) {
+		if doRead {
 			emitData(r, data)
 		} else {
 			// Add data to the buffer for later
@@ -134,15 +134,15 @@ func emitData(r Readable, data types.Chunk) {
 	r.Emit("data", data)
 }
 
-func endReadable(rs *ReadableStream) {
-	state := rs.state
+func endReadable(r Readable) {
+	rs := r.GetReadableState()
 
-	if hasPendingReads(rs) {
+	if hasPendingReads(r) {
 		panic("cannot end stream while pending data")
 	}
 
-	state.ended = true
-	rs.Emit("end", nil)
+	rs.ended = true
+	r.Emit("readable_end", nil)
 }
 
 func readableDestroyed(r Readable) bool {
@@ -334,7 +334,7 @@ func NewReadableStream(conf *Config) (Readable, error) {
 		}
 	})
 
-	stream.Once("end", func(evt types.Event) {
+	stream.Once("readable_end", func(evt types.Event) {
 		if readableDestroyed(stream) {
 			return
 		}

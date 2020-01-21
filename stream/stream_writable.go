@@ -12,10 +12,16 @@ func (ws *WritableStream) Pipe(w Writable) Writable {
 	panic("cannot call pipe on writable stream")
 }
 
-func writeAvailable(w Writable) bool {
-	state := w.GetWriteState()
+func acquireWrite(w Writable) bool {
+	ws := w.GetWriteState()
 
-	return atomic.CompareAndSwapUint32(&state.writing, 0, 1)
+	return atomic.CompareAndSwapUint32(&ws.writing, 0, 1)
+}
+
+func releaseWrite(w Writable) bool {
+	ws := w.GetWriteState()
+
+	return atomic.CompareAndSwapUint32(&ws.writing, 1, 0)
 }
 
 // If we're already writing something, then just put this
@@ -24,7 +30,7 @@ func writeAvailable(w Writable) bool {
 func writeOrBuffer(w Writable, chunk types.Chunk) {
 	// If there is not data buffered, and no write requested,
 	// then we can simply call emitWritable, and continue.
-	if writeAvailable(w) {
+	if acquireWrite(w) {
 		go w.Emit("write", chunk)
 	} else {
 		writableBufferChunk(w, chunk)
@@ -48,7 +54,7 @@ func maybeWriteMore(w Writable) {
 		return
 	}
 
-	if writeAvailable(w) {
+	if acquireWrite(w) {
 		chunk := shiftWritableBuffer(w)
 
 		if chunk == nil {
@@ -108,7 +114,7 @@ func NewWritableStream(conf *Config) (Writable, error) {
 		return nil, errors.New("writable stream requires config with output type")
 	}
 
-	ws.Once("end", func(evt types.Event) {
+	ws.Once("writable_end", func(evt types.Event) {
 		state := ws.state
 
 		if writableDestroyed(ws) {
@@ -146,11 +152,12 @@ func NewWritableStream(conf *Config) (Writable, error) {
 func writableEnded(w Writable) bool {
 	state := w.GetWriteState()
 
-	return state.ended == true
+	return state.ended
 }
 
-func writableDestroyed(ws *WritableStream) bool {
-	return ws.state.destroyed == true
+func writableDestroyed(w Writable) bool {
+	ws := w.GetWriteState()
+	return ws.destroyed
 }
 
 func endWritable(w Writable) {
@@ -167,28 +174,31 @@ func endWritable(w Writable) {
 	}
 
 	rs.ended = true
-	go w.Emit("end", nil)
+	w.Emit("writable_end", nil)
 }
 
 func afterWrite(w Writable) {
-	state := w.GetWriteState()
+	ws := w.GetWriteState()
 
-	if !atomic.CompareAndSwapUint32(&state.writing, 1, 0) {
+	if !releaseWrite(w) {
 		panic("What in the holiest of fucks")
 	}
 
-	len := atomic.LoadInt32(&state.length)
-	writing := atomic.LoadUint32(&state.writing) > 0
+	len := atomic.LoadInt32(&ws.length)
+
+	writing := atomic.LoadUint32(&ws.writing) > 0
+
 	needDrain := (len == 0 &&
-		atomic.LoadUint32(&state.draining) == 1 &&
+		atomic.LoadUint32(&ws.draining) == 1 &&
 		!writableEnded(w))
+
 	needEnd := (writableEnded(w) &&
 		len == 0 &&
 		!writing)
 
 	// Emit drain event if needed
 	if needDrain {
-		if atomic.CompareAndSwapUint32(&state.draining, 1, 0) {
+		if atomic.CompareAndSwapUint32(&ws.draining, 1, 0) {
 			go w.Emit("drain", nil)
 		}
 	}
