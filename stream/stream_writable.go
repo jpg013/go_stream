@@ -154,19 +154,19 @@ func writableDestroyed(ws *WritableStream) bool {
 }
 
 func endWritable(w Writable) {
-	state := w.GetWriteState()
+	rs := w.GetWriteState()
 
-	writing := atomic.LoadUint32(&state.writing) > 0
+	writing := atomic.LoadUint32(&rs.writing) > 0
 
 	if writing {
 		panic("cannot end writable stream while writing")
 	}
 
-	if !state.ended {
+	if !rs.ended {
 		panic("writable not ended")
 	}
 
-	state.ended = true
+	rs.ended = true
 	go w.Emit("end", nil)
 }
 
@@ -178,7 +178,7 @@ func afterWrite(w Writable) {
 	}
 
 	len := atomic.LoadInt32(&state.length)
-	writing := atomic.LoadUint32(&state.writing) == 0
+	writing := atomic.LoadUint32(&state.writing) > 0
 	needDrain := (len == 0 &&
 		atomic.LoadUint32(&state.draining) == 1 &&
 		!writableEnded(w))
