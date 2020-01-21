@@ -4,18 +4,35 @@ import (
 	"github.com/jpg013/go_stream/generators"
 	"github.com/jpg013/go_stream/operators"
 	"github.com/jpg013/go_stream/stream"
-	"github.com/jpg013/go_stream/stream/readable"
 	"github.com/jpg013/go_stream/types"
 )
 
-func main() {
-	mapper := func(chunk types.Chunk) (types.Chunk, error) {
-		return chunk.(int) * 2, nil
+func double(c types.Chunk) (types.Chunk, error) {
+	return c.(int) * 2, nil
+}
+
+func withTransformOperator() stream.OptionFunc {
+	return func(c *stream.Config) {
+		operator, _ := operators.NewMapOperator(double)
+		c.Transform.Operator = operator
 	}
-	operator, _ := operators.NewMapOperator(mapper)
-	gen, _ := generators.NewNumberGenerator(10)
-	rs, _ := readable.NewReadableStream(gen)
-	ts, _ := stream.NewTransformStream(operator)
+}
+
+func withReadableSource() stream.OptionFunc {
+	return func(c *stream.Config) {
+		gen, _ := generators.NewNumberGenerator(10)
+		c.Readable.Generator = gen
+	}
+}
+
+func main() {
+	conf := stream.NewConfig(
+		withTransformOperator(),
+		withReadableSource(),
+	)
+
+	rs, _ := stream.NewReadableStream(conf)
+	ts, _ := stream.NewTransformStream(conf)
 
 	rs.Pipe(ts) //.Pipe(ws)
 

@@ -51,19 +51,25 @@ func (ts *TransformStream) GetWriteState() *WritableState {
 	return ts.writableState
 }
 
+func (ts *TransformStream) GetReadableState() *ReadableState {
+	return ts.readableState
+}
+
 func NewTransformStream(config *Config) (Transform, error) {
 	doneChan := make(chan struct{})
 
 	op := config.Transform.Operator
 
 	if op == nil {
-		panic("Transform stream requires non-nil operator")
+		panic("Transform stream config requires valid operator")
 	}
 
 	ts := &TransformStream{
 		doneChan:      doneChan,
 		state:         NewTransformState(),
 		writableState: NewWritableState(),
+		readableState: NewReadableState(),
+		operator:      op,
 	}
 
 	go func() {
@@ -72,24 +78,96 @@ func NewTransformStream(config *Config) (Transform, error) {
 
 		for {
 			select {
-			case resp := <-outChan:
-				fmt.Println("We have a chunk", resp)
+			case resp, ok := <-outChan:
+				if ok {
+					afterTransform(ts, resp)
+				}
 			case err := <-errorChan:
 				panic(err)
 			}
 		}
 	}()
 
-	ts.transform = func(chunk types.Chunk) {
-		if !atomic.CompareAndSwapUint32(&ts.state.transforming, 0, 1) {
-			panic("bad bad")
+	ts.read = func() {
+		state := ts.state
+
+		// If we can transform then go, else set needTransform flag and continue
+		if state.writeChunk != nil && acquireTransform(ts) {
+			transform(ts)
+		} else {
+			state.needTransform = true
 		}
-
-		// Execute chunk
-		op.Exec(chunk)
-
-		atomic.CompareAndSwapUint32(&ts.state.transforming, 0, 1)
 	}
 
+	ts.On("write", func(evt types.Event) {
+		state := ts.state
+
+		if atomic.LoadUint32(&state.transforming) == 1 {
+			panic("What the fork!")
+		}
+
+		state.writeChunk = evt.Data
+		state.writeCb = func(err error) {
+			if err != nil {
+				panic(err)
+			}
+
+			afterWrite(ts)
+		}
+
+		// TODO: Only read if buffer is not full or needTransform flag set
+		ts.read()
+	})
+
 	return ts, nil
+}
+
+func afterTransform(t Transform, data types.Chunk) {
+	ts := t.GetTransformState()
+	fmt.Println("after transform: ", data)
+	readableAddChunk(t, data)
+	ts.needTransform = false
+
+}
+
+func acquireTransform(t Transform) bool {
+	state := t.GetTransformState()
+
+	return atomic.CompareAndSwapUint32(&state.transforming, 0, 1)
+}
+
+func releaseTransform(t Transform) bool {
+	state := t.GetTransformState()
+
+	return atomic.CompareAndSwapUint32(&state.transforming, 1, 0)
+}
+
+func transform(ts *TransformStream) {
+	state := ts.state
+
+	cb := state.writeCb
+
+	if cb == nil {
+		panic("nil transform callback")
+	}
+
+	chunk := state.writeChunk
+
+	if chunk == nil {
+		panic("nil transform chunk")
+	}
+
+	if atomic.LoadUint32(&state.transforming) != 1 {
+		panic("transform flag not set")
+	}
+
+	// Execute transform operator with write chunk
+	err := ts.operator.Exec(chunk)
+
+	if !releaseTransform(ts) {
+		panic("cannot release transform")
+	}
+
+	// call callback with error
+	cb(err)
 }

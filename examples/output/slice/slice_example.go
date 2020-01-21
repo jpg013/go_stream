@@ -2,16 +2,15 @@ package main
 
 import (
 	"github.com/jpg013/go_stream/output"
-	"github.com/jpg013/go_stream/stream/readable"
-	"github.com/jpg013/go_stream/stream/writable"
+	"github.com/jpg013/go_stream/stream"
 )
 
 var data = []string{
 	"Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
 	"Donec quis urna condimentum, pretium quam elementum, tempus odio.",
-	// "Curabitur ullamcorper orci vel pharetra volutpat.",
-	// "Integer pellentesque lorem eget libero iaculis, eu pretium sapien bibendum.",
-	// "Nulla facilisi.",
+	"Curabitur ullamcorper orci vel pharetra volutpat.",
+	"Integer pellentesque lorem eget libero iaculis, eu pretium sapien bibendum.",
+	"Nulla facilisi.",
 }
 
 func main() {

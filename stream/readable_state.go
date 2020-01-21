@@ -15,6 +15,9 @@ type ReadableState struct {
 	ended             bool
 	destroyed         bool
 	awaitDrainWriters uint32
+	// Destination for readable to write data,
+	// this is set when Pipe() is called
+	dest Writable
 }
 
 func NewReadableState() *ReadableState {
@@ -28,5 +31,6 @@ func NewReadableState() *ReadableState {
 		reading:           0,
 		ended:             false,
 		awaitDrainWriters: 0,
+		dest:              nil,
 	}
 }

@@ -2,6 +2,7 @@ package stream
 
 import (
 	"github.com/jpg013/go_stream/emitter"
+	"github.com/jpg013/go_stream/operators"
 	"github.com/jpg013/go_stream/types"
 )
 
@@ -36,10 +37,7 @@ type WritableStream struct {
 type ReadableStream struct {
 	// embedded event emitter
 	emitter.Emitter
-	state *ReadableState
-	// Destination for readable to write data,
-	// this is set when Pipe() is called
-	dest       Writable
+	state      *ReadableState
 	doneChan   chan struct{}
 	StreamType StreamType
 	// internal read method that can be overwritten
@@ -52,7 +50,10 @@ type TransformStream struct {
 	doneChan      chan struct{}
 	state         *TransformState
 	writableState *WritableState
-	transform     func(types.Chunk)
+	readableState *ReadableState
+	operator      operators.Type
+	// internal read method that can be overwritten
+	read func()
 }
 
 type Stream interface {
@@ -64,7 +65,7 @@ type Stream interface {
 type Readable interface {
 	Stream
 	Read() types.Chunk
-	GetReadState() *ReadableState
+	GetReadableState() *ReadableState
 }
 
 type Writable interface {
@@ -78,4 +79,6 @@ type Transform interface {
 	Read() types.Chunk
 	Write(types.Chunk) bool
 	GetTransformState() *TransformState
+	GetWriteState() *WritableState
+	GetReadableState() *ReadableState
 }

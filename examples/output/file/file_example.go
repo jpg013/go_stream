@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/jpg013/go_stream/output"
-	"github.com/jpg013/go_stream/stream/readable"
+	"github.com/jpg013/go_stream/stream"
 	"github.com/jpg013/go_stream/stream/writable"
 	"path"
 )

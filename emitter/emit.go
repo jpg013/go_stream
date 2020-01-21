@@ -13,7 +13,7 @@ func (e *Emitter) Emit(topic string, data types.Chunk) {
 	fns, ok := e.handlers[topic]
 
 	if !ok {
-		e.rw.Unlock()
+		e.rw.RUnlock()
 		return
 	}
 

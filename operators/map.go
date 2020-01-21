@@ -5,10 +5,10 @@ import "github.com/jpg013/go_stream/types"
 type Map struct {
 	dataChan  chan types.Chunk
 	errorChan chan error
-	mapper    types.Mapper
+	mapper    Mapper
 }
 
-func NewMapOperator(m types.Mapper) (types.Operator, error) {
+func NewMapOperator(m Mapper) (Type, error) {
 	return &Map{
 		dataChan:  make(chan types.Chunk),
 		errorChan: make(chan error),
@@ -16,7 +16,7 @@ func NewMapOperator(m types.Mapper) (types.Operator, error) {
 	}, nil
 }
 
-func (m *Map) Exec(chunk types.Chunk) {
+func (m *Map) Exec(chunk types.Chunk) error {
 	d, err := m.mapper(chunk)
 
 	if err != nil {
@@ -24,6 +24,8 @@ func (m *Map) Exec(chunk types.Chunk) {
 	} else {
 		m.dataChan <- d
 	}
+
+	return nil
 }
 
 func (m *Map) GetOutput() <-chan types.Chunk {

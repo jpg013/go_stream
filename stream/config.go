@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"github.com/jpg013/go_stream/operators"
 	"github.com/jpg013/go_stream/output"
 	"github.com/jpg013/go_stream/types"
 )
@@ -9,7 +10,7 @@ import (
 type OptionFunc func(*Config)
 
 type TransformConfig struct {
-	Operator types.Operator
+	Operator operators.Type
 }
 
 type ReadableConfig struct {
