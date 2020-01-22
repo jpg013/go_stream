@@ -7,8 +7,8 @@ import (
 )
 
 func fromReadableBuffer(state *ReadableState) types.Chunk {
-	state.mux.RLock()
-	defer state.mux.RUnlock()
+	state.mux.Lock()
+	defer state.mux.Unlock()
 
 	len := atomic.LoadInt32(&state.length)
 

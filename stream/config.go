@@ -10,7 +10,7 @@ import (
 type OptionFunc func(*Config)
 
 type TransformConfig struct {
-	Operator operators.Type
+	Mapper operators.Mapper
 }
 
 type ReadableConfig struct {

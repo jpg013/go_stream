@@ -8,6 +8,9 @@ import (
 
 func writableBufferChunk(w Writable, data types.Chunk) {
 	state := w.GetWriteState()
+	state.mux.Lock()
+	defer state.mux.Unlock()
+
 	state.buffer.PushBack(data)
 	len := atomic.AddInt32(&state.length, 1)
 
@@ -22,8 +25,8 @@ func unshiftWritableBuffer(state *WritableState) {
 
 func shiftWritableBuffer(w Writable) types.Chunk {
 	state := w.GetWriteState()
-	state.mux.RLock()
-	defer state.mux.RUnlock()
+	state.mux.Lock()
+	defer state.mux.Unlock()
 
 	len := atomic.LoadInt32(&state.length)
 

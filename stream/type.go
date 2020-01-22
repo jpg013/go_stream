@@ -51,7 +51,7 @@ type TransformStream struct {
 	state         *TransformState
 	writableState *WritableState
 	readableState *ReadableState
-	operator      operators.Type
+	operator      operators.Mapper
 	// internal read method that can be overwritten
 	read func()
 }

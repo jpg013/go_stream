@@ -177,6 +177,24 @@ func endWritable(w Writable) {
 	w.Emit("writable_end", nil)
 }
 
+func writableFinished(w Writable) bool {
+	ws := w.GetWriteState()
+
+	len := atomic.LoadInt32(&ws.length)
+	writing := atomic.LoadUint32(&ws.writing) > 0
+
+	return writableEnded(w) && len == 0 && !writing
+}
+
+func needDrain(w Writable) bool {
+	ws := w.GetWriteState()
+
+	len := atomic.LoadInt32(&ws.length)
+	draining := atomic.LoadUint32(&ws.draining) == 1
+
+	return len == 0 && draining && !writableEnded(w)
+}
+
 func afterWrite(w Writable) {
 	ws := w.GetWriteState()
 
@@ -184,26 +202,14 @@ func afterWrite(w Writable) {
 		panic("What in the holiest of fucks")
 	}
 
-	len := atomic.LoadInt32(&ws.length)
-
-	writing := atomic.LoadUint32(&ws.writing) > 0
-
-	needDrain := (len == 0 &&
-		atomic.LoadUint32(&ws.draining) == 1 &&
-		!writableEnded(w))
-
-	needEnd := (writableEnded(w) &&
-		len == 0 &&
-		!writing)
-
 	// Emit drain event if needed
-	if needDrain {
+	if needDrain(w) {
 		if atomic.CompareAndSwapUint32(&ws.draining, 1, 0) {
 			go w.Emit("drain", nil)
 		}
 	}
 
-	if needEnd {
+	if writableFinished(w) {
 		endWritable(w)
 	}
 

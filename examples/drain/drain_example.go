@@ -35,7 +35,7 @@ func withSTDOUT() stream.OptionFunc {
 func main() {
 	config := stream.NewConfig(
 		withReadableHighWaterMark(16),
-		withWritableHighWaterMark(2),
+		withWritableHighWaterMark(16),
 		withGenerator(10),
 		withSTDOUT(),
 	)

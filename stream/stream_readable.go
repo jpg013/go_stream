@@ -2,6 +2,8 @@ package stream
 
 import (
 	"errors"
+	"fmt"
+	"runtime/debug"
 	"sync/atomic"
 
 	"github.com/jpg013/go_stream/types"
@@ -25,7 +27,7 @@ func maybeReadMore(r Readable) {
 	rs := r.GetReadableState()
 
 	// If existing read then don't try to read more.
-	if readableDestroyed(r) || readableFinished(r) {
+	if readableDestroyed(r) {
 		return
 	}
 
@@ -51,6 +53,8 @@ func readableAddChunk(r Readable, data types.Chunk) {
 	}
 
 	if readableEnded(r) {
+		fmt.Println("this doesn't make any sense :", data)
+		debug.PrintStack()
 		panic("push after EOF")
 	}
 
@@ -77,9 +81,10 @@ func readableAddChunk(r Readable, data types.Chunk) {
 
 func readableBufferChunk(r Readable, data types.Chunk) {
 	rs := r.GetReadableState()
-
+	rs.mux.Lock()
 	rs.buffer.PushBack(data)
 	atomic.AddInt32(&rs.length, 1)
+	rs.mux.Unlock()
 }
 
 func pauseReadable(r Readable) {
@@ -171,6 +176,18 @@ func awaitingDrain(r Readable) bool {
 	return atomic.LoadUint32(&state.awaitDrainWriters) == 1
 }
 
+func acquireRead(r Readable) bool {
+	rs := r.GetReadableState()
+
+	return atomic.CompareAndSwapUint32(&rs.reading, 0, 1)
+}
+
+func releaseRead(r Readable) bool {
+	rs := r.GetReadableState()
+
+	return atomic.CompareAndSwapUint32(&rs.reading, 1, 0)
+}
+
 func readableFinished(r Readable) bool {
 	rs := r.GetReadableState()
 	len := atomic.LoadInt32(&rs.length)
@@ -229,7 +246,7 @@ func (rs *ReadableStream) Read() types.Chunk {
 	return data
 }
 
-func attachWritable(r Readable, w Writable) Writable {
+func attachWritable(r Readable, w Writable) {
 	if readableEnded(r) {
 		panic("cannot call pipe on ended readable stream")
 	}
@@ -249,14 +266,14 @@ func attachWritable(r Readable, w Writable) Writable {
 
 	// call resume readable to start flowing data.
 	resumeReadable(r)
-
-	// return the writable stream
-	return w
 }
 
 // Pipe method is the main way to start the readable flowing data.
 func (rs *ReadableStream) Pipe(w Writable) Writable {
-	return attachWritable(rs, w)
+	attachWritable(rs, w)
+
+	// return the writable stream
+	return w
 }
 
 // Done returns the readable doneChan
@@ -285,8 +302,9 @@ func NewReadableStream(conf *Config) (Readable, error) {
 	// Internal read function
 	stream.read = func() {
 		rs := stream.state
-		if !atomic.CompareAndSwapUint32(&rs.reading, 0, 1) {
-			return
+
+		if !acquireRead(stream) {
+			panic("could not acquire a stream read")
 		}
 
 		for howMuchToRead(rs) > 0 {
@@ -306,9 +324,11 @@ func NewReadableStream(conf *Config) (Readable, error) {
 			}
 		}
 
-		if !atomic.CompareAndSwapUint32(&rs.reading, 1, 0) {
+		if !releaseRead(stream) {
 			panic("Could not unset reading flag")
 		}
+
+		maybeReadMore(stream)
 	}
 
 	stream.On("data", func(evt types.Event) {
