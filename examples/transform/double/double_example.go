@@ -52,7 +52,7 @@ func getWritable(conf *stream.Config) stream.Writable {
 }
 
 func main() {
-	for i := 0; i < 1; i++ {
+	for i := 0; i < 100; i++ {
 		conf := stream.NewConfig(
 			withTransformOperator(),
 			withReadableSource(),

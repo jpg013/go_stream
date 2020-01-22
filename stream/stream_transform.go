@@ -50,15 +50,13 @@ func (stream *TransformStream) Read() types.Chunk {
 		return nil
 	}
 
-	ts := stream.GetTransformState()
+	// ts := stream.GetTransformState()
 	rs := stream.GetReadableState()
 	len := int(atomic.LoadInt32(&rs.length))
 
 	// If we've ended, and we're now clear, then exit.
 	if readableFinished(stream) {
-		if !isTransforming(stream) && ts.writeChunk == nil && ts.writeCb == nil {
-			endReadable(stream)
-		}
+		endReadable(stream)
 		return nil
 	}
 
@@ -173,7 +171,6 @@ func NewTransformStream(config *Config) (Transform, error) {
 		// 	fmt.Println("writable_end is waiting for transform")
 		// 	time.Sleep(1 * time.Second)
 		// }
-		fmt.Println("WRITABLE_END FUCKERS")
 		// readableAddChunk(stream, nil)
 		// stream.operator.End()
 	})
@@ -262,7 +259,8 @@ func afterTransform(t Transform, data types.Chunk, err error) {
 	if writableFinished(t) {
 		// If the writable side of the transform stream is done push
 		// a nil chunk to the readable stream to end
-		readableAddChunk(t, nil)
+		endReadable(t)
+		go t.Read()
 	}
 }
 
