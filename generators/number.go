@@ -19,7 +19,7 @@ func (g *NumberGenerator) Next() (types.Chunk, error) {
 	return chunk, nil
 }
 
-func NewNumberGenerator(max int) (types.Generator, error) {
+func NewNumberGenerator(max int) (Type, error) {
 	return &NumberGenerator{
 		iter: 0,
 		max:  max,

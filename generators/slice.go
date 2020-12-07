@@ -1,8 +1,6 @@
 package generators
 
-import (
-	"github.com/jpg013/go_stream/types"
-)
+import "github.com/jpg013/go_stream/types"
 
 // SliceGenerator is an generator that takes in a slice and
 // emits slice items individually as requested.
@@ -20,7 +18,7 @@ func (sg *SliceGenerator) Next() (types.Chunk, error) {
 	return chunk, nil
 }
 
-func NewSliceGenerator(slice []types.Chunk) (types.Generator, error) {
+func NewSliceGenerator(slice []types.Chunk) (Type, error) {
 	return &SliceGenerator{
 		slice: slice,
 		iter:  0,
