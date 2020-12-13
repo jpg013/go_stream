@@ -11,7 +11,7 @@ type NumberGenerator struct {
 }
 
 func (g *NumberGenerator) Next() (types.Chunk, error) {
-	if g.iter >= g.max {
+	if g.iter > g.max {
 		return nil, nil
 	}
 	chunk := g.iter
@@ -21,7 +21,7 @@ func (g *NumberGenerator) Next() (types.Chunk, error) {
 
 func NewNumberGenerator(max int) (Type, error) {
 	return &NumberGenerator{
-		iter: 0,
+		iter: 1,
 		max:  max,
 	}, nil
 }

@@ -1,56 +1,48 @@
 package main
 
 import (
-	"container/list"
 	"fmt"
-	"sync"
+	"log"
 
 	"github.com/jpg013/go_stream/generators"
-	"github.com/jpg013/go_stream/types"
+	"github.com/jpg013/go_stream/output"
 )
 
 type Chunk interface{}
 
-type Writable interface {
-}
-
-type Readable interface {
-	Pipe(Writable) Writable
-	Done() <-chan struct{}
-	Read() types.Chunk
-}
-
-type ReadableStream struct {
-	mux           sync.RWMutex
-	buffer        *list.List
-	mode          uint32
-	highWaterMark int
-	destroyed     bool
-
-	// Destination for readable to write data,
-	// this is set when Pipe() is called
-	dest Writable
-
-	// internal read method that can be overwritten
-	read func()
-}
-
 type ReadableConfig struct {
 	highWaterMark uint
 	generator     generators.Type
-}
-
-func NewReadable(conf ReadableConfig) Readable {
-	return nil
+	read          func()
 }
 
 func main() {
-	gen, _ := generators.NewNumberGenerator(100)
+	// Define number generator
+	gen, _ := generators.NewNumberGenerator(7500)
 
-	rs := NewReadable(ReadableConfig{
-		highWaterMark: 50,
+	rs, err := NewReadable(ReadableConfig{
+		highWaterMark: 99,
 		generator:     gen,
 	})
 
-	fmt.Println(rs)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	output, _ := output.NewSTDOUT(output.NewConfig())
+
+	ws, err := NewWritableStream(WritableConfig{
+		output:        output,
+		highWaterMark: 50,
+	})
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	rs.Pipe(ws)
+
+	// Wait for read stream to finish
+	<-ws.Done()
+	fmt.Println("Done")
 }

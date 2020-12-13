@@ -2,6 +2,7 @@ package stream
 
 import (
 	"errors"
+	"log"
 	"sync/atomic"
 
 	"github.com/jpg013/go_stream/types"
@@ -132,6 +133,7 @@ func NewWritableStream(conf *Config) (Writable, error) {
 		if atomic.LoadUint32(&state.draining) == 1 {
 			atomic.CompareAndSwapUint32(&state.draining, 1, 0)
 		}
+
 		close(ws.doneChan)
 	})
 
@@ -199,7 +201,7 @@ func afterWrite(w Writable) {
 	ws := w.GetWriteState()
 
 	if !releaseWrite(w) {
-		panic("What in the holiest of fucks")
+		log.Fatal("Could not release write lock")
 	}
 
 	// Emit drain event if needed
