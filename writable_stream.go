@@ -5,7 +5,6 @@ import (
 	"log"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/jpg013/go_stream/emitter"
 	"github.com/jpg013/go_stream/output"
@@ -43,9 +42,7 @@ type WritableStream struct {
 	ended         int32
 	draining      uint32
 	mux           sync.RWMutex
-
-	// bit determining whether the stream is currently reading or not
-	writing uint32
+	writing       uint32
 }
 
 func writableEndOfChunk(ws *WritableStream) {
@@ -142,15 +139,10 @@ func NewWritableStream(conf WritableConfig) (Writable, error) {
 
 	ws.On("write", func(evt types.Event) {
 		// Call output.Write with data
-		// Simulate some network latency
-		time.Sleep(2 * time.Millisecond)
-		// If not end of chunk
-		if evt.Data != nil {
-			err := out.Write(evt.Data)
+		err := out.Write(evt.Data)
 
-			if err != nil {
-				log.Fatal(err.Error())
-			}
+		if err != nil {
+			log.Fatal(err.Error())
 		}
 
 		afterWrite(ws)
