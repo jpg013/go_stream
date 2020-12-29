@@ -28,11 +28,11 @@ func (m *Map) Exec(chunk types.Chunk) error {
 	return nil
 }
 
-func (m *Map) GetOutput() <-chan types.Chunk {
+func (m *Map) Output() <-chan types.Chunk {
 	return m.dataChan
 }
 
-func (m *Map) GetError() <-chan error {
+func (m *Map) Error() <-chan error {
 	return m.errorChan
 }
 

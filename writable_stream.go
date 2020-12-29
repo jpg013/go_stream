@@ -3,8 +3,8 @@ package main
 import (
 	"errors"
 	"log"
-	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/jpg013/go_stream/emitter"
 	"github.com/jpg013/go_stream/output"
@@ -17,6 +17,7 @@ type Stream interface {
 	types.EventEmitter
 	Pipe(Writable) Writable
 	Done() <-chan struct{}
+	getInternalState() *InternalState
 }
 
 type Writable interface {
@@ -26,31 +27,23 @@ type Writable interface {
 
 // Config represents a writable config
 type WritableConfig struct {
-	highWaterMark uint
+	highWaterMark uint64
 	output        output.Type
 }
 
 type WritableStream struct {
 	emitter.Emitter
-	Type          StreamType
-	doneCh        chan struct{}
-	highWaterMark uint
-	length        int64
-	waiting       int32
-	buffer        Buffer
-	destroyed     bool
-	ended         int32
-	draining      uint32
-	mux           sync.RWMutex
-	writing       uint32
+	Type    StreamType
+	writing uint32
+	state   *InternalState
 }
 
-func writableEndOfChunk(ws *WritableStream) {
-	if writableEnded(ws) {
+func writableEndOfChunk(w Writable) {
+	if writableEnded(w) {
 		log.Fatal("Cannot call writableEndOfChunk(), writable_stream already ended")
 	}
 
-	if !endWritable(ws) {
+	if !endWritable(w) {
 		log.Fatal("Could not end writable, writable already ended.")
 	}
 }
@@ -67,9 +60,6 @@ func (ws *WritableStream) Write(data types.Chunk) bool {
 	// Similar to a readable stream, a nil chunk indicates end of stream.
 	if data == nil {
 		writableEndOfChunk(ws)
-		if writableFinished(ws) {
-			ws.Emit("writable_done", nil)
-		}
 		return false
 	} else {
 		writableBufferChunk(ws, data)
@@ -81,38 +71,28 @@ func (ws *WritableStream) Write(data types.Chunk) bool {
 		write(ws)
 	}
 
-	return canWriteMore(ws)
+	return true
 }
 
-func howMuchToWrite(ws *WritableStream) int {
-	return ws.buffer.Len()
-}
-
-func write(ws *WritableStream) {
-	if !acquireWrite(ws) {
+func write(w Writable) {
+	if !acquireWrite(w) {
 		return
 	}
 
 	go func() {
-		for howMuchToWrite(ws) > 0 {
-			chunk, _ := ws.buffer.Read()
-			ws.Emit("write", chunk)
+		state := w.getInternalState()
+		for chunk := range state.buffer {
+			w.Emit("write", chunk)
 		}
-		if !releaseWrite(ws) {
+		afterWrite(w)
+		if !releaseWrite(w) {
 			log.Fatal("Could not unset writing flag")
 		}
-		maybeWriteMore(ws)
 	}()
 }
 
-func maybeWriteMore(ws *WritableStream) {
-	if !isWriting(ws) && ws.buffer.Len() > 0 {
-		write(ws)
-	}
-}
-
 func (ws *WritableStream) Done() <-chan struct{} {
-	return ws.doneCh
+	return ws.state.doneCh
 }
 
 // Pipe function
@@ -120,15 +100,13 @@ func (ws *WritableStream) Pipe(w Writable) Writable {
 	panic("cannot call pipe on writable stream")
 }
 
-func NewWritableStream(conf WritableConfig) (Writable, error) {
+func (ws *WritableStream) getInternalState() *InternalState {
+	return ws.state
+}
+
+func NewWritableStream(conf StreamConfig) (Writable, error) {
 	ws := &WritableStream{
-		destroyed:     false,
-		ended:         0,
-		highWaterMark: conf.highWaterMark,
-		buffer:        NewBuffer(),
-		doneCh:        make(chan struct{}),
-		writing:       0,
-		draining:      0,
+		state: NewInternalState(conf),
 	}
 
 	out := conf.output
@@ -138,14 +116,13 @@ func NewWritableStream(conf WritableConfig) (Writable, error) {
 	}
 
 	ws.On("write", func(evt types.Event) {
+		time.Sleep(10 * time.Millisecond)
 		// Call output.Write with data
 		err := out.Write(evt.Data)
 
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-
-		afterWrite(ws)
 	})
 
 	ws.Once("writable_done", func(evt types.Event) {
@@ -159,85 +136,67 @@ func NewWritableStream(conf WritableConfig) (Writable, error) {
 
 		// Close the output
 		out.Close()
-		ws.destroyed = true
+
+		if !atomic.CompareAndSwapInt32(&ws.state.writableDestroyed, 0, 1) {
+			log.Fatal("could not destroy writable - already destroyed")
+		}
 
 		// unset if draining
 		if isDraining(ws) {
-			atomic.CompareAndSwapUint32(&ws.draining, 1, 0)
+			atomic.CompareAndSwapUint32(&ws.state.draining, 1, 0)
 		}
 
 		// Send message to done channel
-		close(ws.doneCh)
+		close(ws.state.doneCh)
 	})
 
 	return ws, nil
 }
 
-func canWriteMore(ws *WritableStream) bool {
-	return !writableEnded(ws) &&
-		uint(ws.buffer.Len()) < ws.highWaterMark &&
-		!isDraining(ws)
+func writableEnded(w Writable) bool {
+	state := w.getInternalState()
+	return atomic.LoadInt32(&state.writableEnded) == 1
 }
 
-func writableEnded(ws *WritableStream) bool {
-	return atomic.LoadInt32(&ws.ended) == 1
+func writableBufferChunk(w Writable, chunk types.Chunk) {
+	state := w.getInternalState()
+	state.buffer <- chunk
 }
 
-func writableBufferChunk(ws *WritableStream, chunk types.Chunk) {
-	ws.buffer.Write(chunk)
-
-	if uint(ws.buffer.Len()) >= ws.highWaterMark && !isDraining(ws) {
-		atomic.CompareAndSwapUint32(&ws.draining, 0, 1)
-	}
+func isDraining(w Writable) bool {
+	state := w.getInternalState()
+	return atomic.LoadUint32(&state.draining) == 1
 }
 
-func isDraining(ws *WritableStream) bool {
-	return atomic.LoadUint32(&ws.draining) == 1
+func isWriting(w Writable) bool {
+	state := w.getInternalState()
+	return atomic.LoadUint32(&state.writing) == uint32(1)
 }
 
-func isWriting(ws *WritableStream) bool {
-	return atomic.LoadUint32(&ws.writing) == uint32(1)
+func acquireWrite(w Writable) bool {
+	state := w.getInternalState()
+	return atomic.CompareAndSwapUint32(&state.writing, 0, 1)
 }
 
-func acquireWrite(ws *WritableStream) bool {
-	return atomic.CompareAndSwapUint32(&ws.writing, 0, 1)
+func releaseWrite(w Writable) bool {
+	state := w.getInternalState()
+	return atomic.CompareAndSwapUint32(&state.writing, 1, 0)
 }
 
-func releaseWrite(ws *WritableStream) bool {
-	return atomic.CompareAndSwapUint32(&ws.writing, 1, 0)
-}
-
-func endWritable(ws *WritableStream) bool {
-	if atomic.CompareAndSwapInt32(&ws.ended, 0, 1) {
+func endWritable(w Writable) bool {
+	state := w.getInternalState()
+	if atomic.CompareAndSwapInt32(&state.writableEnded, 0, 1) {
+		close(state.buffer)
 		return true
 	}
-
 	return false
 }
 
-func writableDestroyed(ws *WritableStream) bool {
-	return ws.destroyed == true
+func writableDestroyed(w Writable) bool {
+	state := w.getInternalState()
+	return atomic.LoadInt32(&state.writableDestroyed) == 1
 }
 
-func writableFinished(ws *WritableStream) bool {
-	ws.mux.RLock()
-	defer ws.mux.RUnlock()
-	return writableEnded(ws) && ws.buffer.Len() == 0
-}
-
-func afterWrite(ws *WritableStream) {
-	// Emit drain event if needed
-	if needDrain(ws) {
-		if atomic.CompareAndSwapUint32(&ws.draining, 1, 0) {
-			go ws.Emit("drain", nil)
-		}
-	}
-	if writableFinished(ws) {
-		ws.Emit("writable_done", nil)
-	}
-}
-
-func needDrain(ws *WritableStream) bool {
-	buffLen := ws.buffer.Len()
-	return !writableEnded(ws) && buffLen == 0 && isDraining(ws)
+func afterWrite(w Writable) {
+	w.Emit("writable_done", nil)
 }
