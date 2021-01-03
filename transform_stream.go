@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/jpg013/go_stream/emitter"
-	"github.com/jpg013/go_stream/generators"
 	"github.com/jpg013/go_stream/types"
 )
 
@@ -15,30 +14,7 @@ type Transform interface {
 type TransformStream struct {
 	// embedded event emitter
 	emitter.Emitter
-
-	buffer        chan types.Chunk
-	mode          uint32
-	highWaterMark uint
-	doneCh        chan (struct{})
-	gen           generators.Type
-
-	Type StreamType
-
-	// writable ended bit
-	wEnded int32
-
-	// destroyed bit
-	wDestroyed int32
-
-	// Destination for readable to write data,
-	// this is set when Pipe() is called
-	dest Writable
-
-	// bit determining whether the stream is currently reading or not
-	reading uint32
-
-	// internal read method that can be overwritten
-	read func()
+	state *InternalState
 }
 
 func (ts *TransformStream) Pipe(w Writable) Writable {
@@ -76,10 +52,10 @@ func (ts *TransformStream) Read() (data types.Chunk) {
 }
 
 func (ts *TransformStream) Done() <-chan struct{} {
-	return ts.doneCh
+	return ts.state.doneCh
 }
 
-func NewTransformStream() Transform {
+func NewTransformStream(conf StreamConfig) Transform {
 	ts := &TransformStream{}
 	return ts
 }
